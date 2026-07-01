@@ -60,10 +60,10 @@ CB_API_KEY = os.environ.get("CB_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIza-placeholder")
 
 # מודל Gemini לשימוש.
-# gemini-2.0-flash  — מהיר, זול, מומלץ לשימוש יומי
-# gemini-1.5-flash  — גיבוי אם 2.0 לא זמין
-# gemini-1.5-pro    — איכות גבוהה יותר, יקר יותר
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+# gemini-2.5-flash-lite — מהיר, חינמי, 10 RPM (הכי גבוה ב-Free Tier)
+# gemini-2.5-flash     — איכות גבוהה יותר, 5 RPM
+# gemini-3-flash       — החדש ביותר, 5 RPM
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 # ==============================================================================
 # 4. הגדרות Google Sheets
