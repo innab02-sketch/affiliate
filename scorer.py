@@ -234,6 +234,8 @@ def score_products(products, use_ai_for_analysis=True):
 
         if client is not None:
             product["ai_analysis"] = _analyze_with_gemini(client, product, score, pts)
+            # Rate limiting: 10 RPM = max 1 request per 6 seconds
+            time.sleep(7)
         else:
             product["ai_analysis"] = "ניתוח AI מושבת (הגדירי GEMINI_API_KEY)."
 
