@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-scorer.py - מודול הניקוד באמצעות Gemini API (Google)
+scorer.py - מודול הניקוד המקומי (ללא AI)
 ================================================================================
 
-מודול זה מחשב ציון מספרי לכל הצעה ושולח את הנתונים ל-Gemini לניתוח איכותני.
+מודול זה מחשב ציון מספרי לכל הצעה על בסיס נתונים כמותיים בלבד.
+אין צורך ב-API חיצוני — הכל רץ מקומית, מהיר ודטרמיניסטי.
 
 מודל הניקוד (משקלים):
 - EPC (רווח לקליק):       משקל 3.0
@@ -14,22 +15,10 @@ scorer.py - מודול הניקוד באמצעות Gemini API (Google)
 - יציבות / גיל ההצעה:     משקל 1.0
 
 הציון הסופי = ממוצע משוקלל מנורמל לטווח 0-100.
-
-הערה: הציון המספרי מחושב מקומית (דטרמיניסטי, עקבי ב-100%).
-Gemini משמש לניתוח האיכותני בעברית בלבד — חוסך עלויות ומונע אי-עקביות.
-
-הגדרת API Key:
-  - ב-config.py: GEMINI_API_KEY = "AIza..."
-  - או כמשתנה סביבה: export GEMINI_API_KEY="AIza..."
-  - ניתן לקבל מפתח חינמי ב: https://aistudio.google.com/app/apikey
 ================================================================================
 """
 
-import time
 import logging
-
-from google import genai
-from google.genai import types
 
 import config
 
@@ -115,104 +104,57 @@ def compute_local_score(product):
     return final_score, pts
 
 
-# ==============================================================================
-# ניתוח איכותני באמצעות Gemini API
-# ==============================================================================
-
-# הנחיית המערכת ל-Gemini
-_SYSTEM_INSTRUCTION = (
-    "אתה מומחה לשיווק שותפים (affiliate marketing) ולהערכת הצעות ב-ClickBank. "
-    "תפקידך לנתח הצעת מוצר ולספק ניתוח קצר, חד וענייני בעברית (2-3 משפטים), "
-    "שמסביר האם זו הצעה מומלצת לקידום, מהן נקודות החוזק והחולשה, "
-    "ולמי היא מתאימה. התבסס על הנתונים: EPC, עמלה, מודל מנוי, ו-Gravity. "
-    "ענה אך ורק בעברית, בצורה תמציתית ומקצועית."
-)
-
-
-def _build_prompt(product, score, pts):
-    """בונה את הפרומפט שיישלח ל-Gemini עבור מוצר בודד."""
-    recurring_he = "כן" if product.get("recurring") else "לא"
-    return (
-        f"נתוני ההצעה:\n"
-        f"- שם המוצר: {product.get('product_name')}\n"
-        f"- קטגוריה: {product.get('category')}\n"
-        f"- Gravity: {product.get('gravity')}\n"
-        f"- EPC: ${product.get('epc')}\n"
-        f"- אחוז עמלה: {product.get('commission')}%\n"
-        f"- מנוי חוזר: {recurring_he}\n"
-        f"\n"
-        f"ציון אוטומטי שחושב: {score}/100\n"
-        f"פירוק נקודות: EPC={pts['epc']}, עמלה={pts['commission']}, "
-        f"מנוי={pts['recurring']}, Gravity={pts['gravity']}, יציבות={pts['stability']}\n"
-        f"\n"
-        f"ספקי ניתוח קצר בעברית (2-3 משפטים) על ההצעה הזו עבור משווקת שותפים."
-    )
-
-
-def _build_gemini_client():
+def _generate_summary(product, score, pts):
     """
-    יוצר לקוח Gemini מאומת.
-    מחזיר None אם המפתח חסר או לא תקין.
+    יוצר סיכום טקסטואלי קצר בעברית על בסיס הנתונים (ללא AI).
     """
-    api_key = config.GEMINI_API_KEY
-    if not api_key or api_key.startswith("AIza-placeholder"):
-        logger.warning("GEMINI_API_KEY לא מוגדר. ניתוח AI מושבת.")
-        return None
-    try:
-        client = genai.Client(api_key=api_key)
-        return client
-    except Exception as exc:  # noqa: BLE001
-        logger.error("נכשל אתחול לקוח Gemini: %s", exc)
-        return None
+    strengths = []
+    weaknesses = []
 
+    if pts["epc"] >= 70:
+        strengths.append("EPC גבוה")
+    elif pts["epc"] <= 10:
+        weaknesses.append("EPC נמוך")
 
-def _analyze_with_gemini(client, product, score, pts):
-    """
-    שולח בקשה ל-Gemini לקבלת ניתוח איכותני בעברית.
-    כולל ניסיונות חוזרים במקרה של כשל.
-    מחזיר מחרוזת ניתוח, או הודעת ברירת מחדל במקרה של כשל מתמשך.
-    """
-    prompt = _build_prompt(product, score, pts)
+    if pts["commission"] >= 70:
+        strengths.append("עמלה גבוהה")
+    elif pts["commission"] <= 10:
+        weaknesses.append("עמלה נמוכה")
 
-    for attempt in range(1, config.MAX_RETRIES + 1):
-        try:
-            response = client.models.generate_content(
-                model=config.GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=_SYSTEM_INSTRUCTION,
-                    max_output_tokens=300,
-                    temperature=0.3,   # נמוך = תשובות עקביות ועסקיות
-                ),
-            )
-            analysis = (response.text or "").strip()
-            return analysis if analysis else "אין ניתוח זמין."
+    if pts["recurring"] == 100:
+        strengths.append("מנוי חוזר")
+    else:
+        weaknesses.append("ללא מנוי חוזר")
 
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "כשל בקריאה ל-Gemini עבור '%s' (ניסיון %d/%d): %s",
-                product.get("product_name"),
-                attempt,
-                config.MAX_RETRIES,
-                exc,
-            )
-            if attempt < config.MAX_RETRIES:
-                time.sleep(config.RETRY_DELAY)
+    if pts["gravity"] >= 70:
+        strengths.append("Gravity חזק")
+    elif pts["gravity"] <= 10:
+        weaknesses.append("Gravity נמוך")
 
-    return "לא ניתן היה להפיק ניתוח (שגיאת Gemini API)."
+    parts = []
+    if strengths:
+        parts.append(f"חוזקות: {', '.join(strengths)}")
+    if weaknesses:
+        parts.append(f"חולשות: {', '.join(weaknesses)}")
+
+    if score >= 75:
+        parts.append("הצעה מומלצת מאוד.")
+    elif score >= 50:
+        parts.append("הצעה סבירה.")
+    else:
+        parts.append("הצעה חלשה.")
+
+    return " | ".join(parts)
 
 
 # ==============================================================================
 # פונקציות ציבוריות
 # ==============================================================================
 
-def score_products(products, use_ai_for_analysis=True):
+def score_products(products, use_ai_for_analysis=False):
     """
-    מקבל רשימת מוצרים, מחשב ציון לכל אחד, ומוסיף ניתוח מ-Gemini.
+    מקבל רשימת מוצרים, מחשב ציון לכל אחד, ומוסיף סיכום טקסטואלי.
     מחזיר את הרשימה מועשרת בשדות 'score' ו-'ai_analysis'.
-
-    use_ai_for_analysis — אם True, יישלחו בקשות ל-Gemini לניתוח איכותני.
-                          אם False, ידולג שלב ה-AI (חוסך עלויות/מכסה).
     """
     if not products:
         logger.info("אין מוצרים לניקוד.")
@@ -220,24 +162,11 @@ def score_products(products, use_ai_for_analysis=True):
 
     logger.info("מתחיל ניקוד של %d מוצרים", len(products))
 
-    # אתחול לקוח Gemini פעם אחת לכל הסשן
-    client = None
-    if use_ai_for_analysis:
-        client = _build_gemini_client()
-        if client is None:
-            logger.warning("ממשיך ללא ניתוח Gemini (אין לקוח תקין).")
-
     scored = []
     for product in products:
         score, pts = compute_local_score(product)
         product["score"] = score
-
-        if client is not None:
-            product["ai_analysis"] = _analyze_with_gemini(client, product, score, pts)
-            # Rate limiting: 10 RPM = max 1 request per 6 seconds
-            time.sleep(7)
-        else:
-            product["ai_analysis"] = "ניתוח AI מושבת (הגדירי GEMINI_API_KEY)."
+        product["ai_analysis"] = _generate_summary(product, score, pts)
 
         scored.append(product)
         logger.debug("מוצר '%s' קיבל ציון %s", product.get("product_name"), score)
