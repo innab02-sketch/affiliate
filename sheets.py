@@ -14,7 +14,9 @@ sheets.py - מודול הכתיבה ל-Google Sheets
 ================================================================================
 """
 
+import json
 import logging
+import os
 from datetime import datetime
 
 import gspread
@@ -48,10 +50,20 @@ HEADER_ROW = [
 def _get_client():
     """
     יוצר ומחזיר לקוח gspread מאומת באמצעות Service Account.
+    תומך בשני מצבים:
+      1. משתנה סביבה GOOGLE_SERVICE_ACCOUNT_JSON (JSON string) - מועדף ב-Railway
+      2. קובץ service_account.json (fallback מקומי)
     """
-    creds = Credentials.from_service_account_file(
-        config.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES
-    )
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if sa_json:
+        # Parse JSON from environment variable
+        info = json.loads(sa_json)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        # Fallback to file
+        creds = Credentials.from_service_account_file(
+            config.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
     return gspread.authorize(creds)
 
 
