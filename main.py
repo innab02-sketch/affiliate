@@ -86,7 +86,7 @@ def main():
         logger.warning("לא נשלפו מוצרים כלל. מסיים את הריצה.")
         return 1
 
-    # --- שלב 2: ניקוד באמצעות Claude ---
+    # --- שלב 2: ניקוד + ניתוח Gemini ---
     try:
         scored = scorer.score_products(products)
     except Exception as exc:  # noqa: BLE001
