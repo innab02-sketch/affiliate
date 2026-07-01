@@ -88,7 +88,7 @@ def main():
 
     # --- שלב 2: ניקוד באמצעות Claude ---
     try:
-        scored = scorer.score_products(products, use_claude_for_analysis=True)
+        scored = scorer.score_products(products)
     except Exception as exc:  # noqa: BLE001
         logger.exception("שגיאה בשלב הניקוד: %s", exc)
         scored = products  # נמשיך עם מה שיש (ללא ניתוח AI).
